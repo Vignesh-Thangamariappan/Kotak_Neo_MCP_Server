@@ -1,21 +1,36 @@
-from fastapi import FastAPI, HTTPException
+import os
+
+from fastapi import FastAPI, HTTPException, Depends, Header
 import redis.asyncio as aioredis
 import json
-from fastapi import HTTPException
 from neo_api_client import NeoAPI
 from pydantic import BaseModel, Field
 import uuid
 
 EIGHTEEN_HOURS_IN_SECONDS = 18 * 60 * 60
 
+WORKER_API_KEY = os.environ.get("WORKER_API_KEY", "")
+
 redis_connection = None
+
+
+async def verify_api_key(x_worker_api_key: str = Header(default="")):
+    """
+    Shared-secret check for every /worker/* route. Set WORKER_API_KEY in the
+    environment for both this service and the mcp_server.py process to enable
+    it. Left unset only for local single-user testing on 127.0.0.1.
+    """
+    if WORKER_API_KEY and x_worker_api_key != WORKER_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing worker API key.")
+
 
 def create_redis_client():
     """Returns a client object, but does NOT connect yet."""
     return aioredis.Redis(
-        host='redis', 
-        port=6379, 
-        db=0, 
+        host=os.environ.get("REDIS_HOST", "redis"),
+        port=int(os.environ.get("REDIS_PORT", 6379)),
+        password=os.environ.get("REDIS_PASSWORD") or None,
+        db=0,
         decode_responses=True
     )
 
@@ -93,7 +108,7 @@ async def shutdown_event():
     if global_redis_client:
         await global_redis_client.close()
 
-@app.get("/worker/holdings/{session_id}")
+@app.get("/worker/holdings/{session_id}", dependencies=[Depends(verify_api_key)])
 async def get_holdings_data(session_id: str):
     """Fetches holdings using Koatk Neo library (websockets==8.0)."""
     try:
@@ -111,7 +126,7 @@ async def get_holdings_data(session_id: str):
         print(f"Exception when calling holdings: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching holdings from Koatk Neo: {e}")
     
-@app.get("/worker/limits/{session_id}")
+@app.get("/worker/limits/{session_id}", dependencies=[Depends(verify_api_key)])
 async def get_limits_data(session_id: str):
     """Fetches limits using Koatk Neo library (websockets==8.0)."""
     try:
@@ -129,7 +144,7 @@ async def get_limits_data(session_id: str):
         print(f"Exception when calling limits: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching limits from Koatk Neo: {e}")
     
-@app.get("/worker/positions/{session_id}")
+@app.get("/worker/positions/{session_id}", dependencies=[Depends(verify_api_key)])
 async def get_positions_data(session_id: str):
     """Fetches positions using Koatk Neo library (websockets==8.0)."""
     try:
@@ -150,10 +165,10 @@ async def get_positions_data(session_id: str):
 from pydantic import BaseModel
 
 class BuyOrderRequest(BaseModel):
-    qty: int
+    qty: int = Field(..., gt=0)
     stock: str
-    
-@app.post("/worker/buy/{session_id}")
+
+@app.post("/worker/buy/{session_id}", dependencies=[Depends(verify_api_key)])
 async def buy_order(session_id:str, order_data: BuyOrderRequest):
     """ Place order to BUY stock for client """
     try:
@@ -189,17 +204,18 @@ async def buy_order(session_id:str, order_data: BuyOrderRequest):
         last_traded_price=None,
         trailing_stop_loss=None,
         trailing_sl_value=None,
-    )   
+    )
         print(response)
         return response
     except Exception as e:
         print("Exception when calling OrderApi->place_order: %s\n" % e)
-    
+        raise HTTPException(status_code=502, detail=f"Order placement failed: {e}")
+
 class SellOrderRequest(BaseModel):
-    qty: int
+    qty: int = Field(..., gt=0)
     stock: str
-    
-@app.post("/worker/sell/{session_id}")
+
+@app.post("/worker/sell/{session_id}", dependencies=[Depends(verify_api_key)])
 async def sell_order(session_id:str, order_data: SellOrderRequest):
     """ Place order to SELL stock for client """
     try:
@@ -235,14 +251,15 @@ async def sell_order(session_id:str, order_data: SellOrderRequest):
         last_traded_price=None,
         trailing_stop_loss=None,
         trailing_sl_value=None,
-    )   
+    )
         print(response)
         return response
     except Exception as e:
         print("Exception when calling OrderApi->place_order: %s\n" % e)
+        raise HTTPException(status_code=502, detail=f"Order placement failed: {e}")
 
 
-@app.post("/worker/validate/")    
+@app.post("/worker/validate/", dependencies=[Depends(verify_api_key)])
 async def validate(req: ValidateRequest):
     if not global_redis_client:
         raise HTTPException(status_code=503, detail="Redis service is unavailable.")

@@ -15,7 +15,7 @@ async def get_holdings_data(session_id: str):
         except httpx.HTTPStatusError as e:
             raise HTTPException(
                 status_code=e.response.status_code,
-                details = f"worker error {e.response.json().get('details', 'unknown error')}"
+                detail=f"worker error {e.response.json().get('detail', 'unknown error')}"
             )
         except httpx.RequestError as e:
             raise HTTPException(status_code=503, detail=f"Cannot connect to Neo Worker service: {e}")
