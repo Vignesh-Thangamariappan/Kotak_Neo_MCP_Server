@@ -116,15 +116,22 @@ async def login(totp: Optional[str] = None):
             "See .env.example.",
         )
 
-    if not re.fullmatch(r"\d{10}", mobile_number):
+    if not re.fullmatch(r"[0-9]{10}", mobile_number):
         # Deliberately do not echo the value itself back - only shape info.
+        # Note: uses [0-9] rather than \d, since \d also matches non-ASCII
+        # Unicode digit characters that Kotak's API will still reject.
+        is_ascii = True
+        try:
+            mobile_number.encode("ascii")
+        except UnicodeEncodeError:
+            is_ascii = False
         raise HTTPException(
             status_code=400,
             detail=(
-                "KOTAK_MOBILE_NUMBER must be exactly 10 digits, no +91, spaces, "
-                f"dashes, or quotes. Current value has length {len(mobile_number)} "
-                f"and {'contains' if not mobile_number.isdigit() else 'does not contain'} "
-                "non-digit characters. Check for stray quotes/whitespace in your .env file."
+                "KOTAK_MOBILE_NUMBER must be exactly 10 plain ASCII digits, no "
+                f"+91, spaces, dashes, or quotes. Current value has length "
+                f"{len(mobile_number)} and is_ascii={is_ascii}. Check for stray "
+                "quotes/whitespace/non-ASCII characters in your .env file."
             ),
         )
 
