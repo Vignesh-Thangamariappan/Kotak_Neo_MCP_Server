@@ -274,28 +274,43 @@ async def validate(req: ValidateRequest):
         )
         
         # --- Step 2a: TOTP Login (Get VIEW_TOKEN) ---
-        # The library method is client.totp_login(), which returns the response object.
+        # NOTE: the underlying neo_api_client library does NOT raise on a
+        # failed login/validate call - it only sets client.configuration
+        # attributes when Kotak's API returns a 2xx, and otherwise just
+        # returns the raw (unraised) error payload. We must inspect these
+        # responses ourselves or every failure looks identical downstream.
         login_response = client.totp_login(
-            mobile_number=req.mobile_number, 
-            ucc=req.ucc, 
+            mobile_number=req.mobile_number,
+            ucc=req.ucc,
             totp=req.totp
         )
-        
+
+        if not isinstance(login_response, dict) or not login_response.get("data", {}).get("token"):
+            raise HTTPException(
+                status_code=401,
+                detail=f"TOTP login was rejected by Kotak Neo: {login_response}",
+            )
 
         # --- Step 2b: MPIN Validate (Get TRADING_TOKEN) ---
         # The library handles the header construction (Auth, sid) internally based on the view tokens.
-        client.totp_validate(mpin=req.mpin)
+        validate_response = client.totp_validate(mpin=req.mpin)
+
+        if not isinstance(validate_response, dict) or not validate_response.get("data", {}).get("token"):
+            raise HTTPException(
+                status_code=401,
+                detail=f"MPIN validation was rejected by Kotak Neo: {validate_response}",
+            )
 
         # --- FINAL TOKEN EXTRACTION FOR REDIS STORAGE ---
         # After totp_validate, the client.configuration should hold the final TRADING tokens.
         config_vars = vars(client.configuration)
-        
+
         TRADING_TOKEN = config_vars.get('edit_token')  # Assumed to be the TRADING_TOKEN
         TRADING_SID = config_vars.get('edit_sid')      # Assumed to be the TRADING_SID
         BASE_URL = config_vars.get('base_url')
-        
+
         if not TRADING_TOKEN or not TRADING_SID:
-            raise HTTPException(status_code=404, 
+            raise HTTPException(status_code=404,
                                 detail="MPIN validation succeeded, but final TRADING tokens (edit_token/edit_sid) were not found.")
 
         # 2. Store the essential data in Redis
