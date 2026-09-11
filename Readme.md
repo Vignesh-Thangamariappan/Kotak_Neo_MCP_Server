@@ -30,8 +30,12 @@ The MCP server exposes the following trading operations:
 3. Get Holdings.
 4. Get Limits available.
 5. Get current Position.
-6. Place a Buy order (requires `confirm=True`).
-7. Place a Sell order (requires `confirm=True`).
+6. Get live Quotes (LTP/OHLC/depth/etc.) for one or more instruments.
+7. Get Order Book (today's orders and their status).
+8. Get Order History for a single order id.
+9. Get Trade Book (today's completed trades).
+10. Place a Buy order (requires `confirm=True`).
+11. Place a Sell order (requires `confirm=True`).
 
 ## Architecture
 ![Architecture](Kotak_MCP_Server.png)

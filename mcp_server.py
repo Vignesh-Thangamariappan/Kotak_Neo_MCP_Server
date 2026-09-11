@@ -249,6 +249,84 @@ async def get_positions():
             await _raise_for_worker_error(e)
 
 
+@mcp.tool()
+async def get_quotes(instruments: list[dict], quote_type: str = "ltp"):
+    """
+    Gets live quotes for one or more instruments.
+
+    Parameters:
+      - instruments: list of {"exchange_segment": "nse_fo", "instrument_token": "55980"}
+        dicts. exchange_segment is one of nse_cm, bse_cm, nse_fo, bse_fo, cde_fo, mcx_fo.
+        instrument_token comes from the `tok` field in get_positions/get_holdings output.
+      - quote_type: one of "all", "ltp", "ohlc", "depth", "oi", "52W", "circuit_limits",
+        "scrip_details". Defaults to "ltp".
+    """
+    session_id = _require_session()
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{NEO_WORKER_URL}/worker/quotes/{session_id}",
+                json={"instruments": instruments, "quote_type": quote_type},
+                headers=_auth_headers(),
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            await _raise_for_worker_error(e)
+
+
+@mcp.tool()
+async def get_order_book():
+    """Gets the order book: all orders placed today and their current status."""
+    session_id = _require_session()
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{NEO_WORKER_URL}/worker/order-book/{session_id}",
+                headers=_auth_headers(),
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            await _raise_for_worker_error(e)
+
+
+@mcp.tool()
+async def get_order_history(order_id: str):
+    """Gets the full status history for a single order id (from get_order_book)."""
+    session_id = _require_session()
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{NEO_WORKER_URL}/worker/order-history/{session_id}/{order_id}",
+                headers=_auth_headers(),
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            await _raise_for_worker_error(e)
+
+
+@mcp.tool()
+async def get_trade_book():
+    """Gets the trade book: all completed trades for today."""
+    session_id = _require_session()
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{NEO_WORKER_URL}/worker/trade-book/{session_id}",
+                headers=_auth_headers(),
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            await _raise_for_worker_error(e)
+
+
 def _validate_qty(qty: str) -> str:
     try:
         qty_int = int(qty)

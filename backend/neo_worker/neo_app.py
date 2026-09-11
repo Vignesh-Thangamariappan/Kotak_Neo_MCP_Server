@@ -161,7 +161,94 @@ async def get_positions_data(session_id: str):
         # Log the error in the worker service's logs
         print(f"Exception when calling positions: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching positions from Koatk Neo: {e}")
-    
+
+
+class QuoteInstrument(BaseModel):
+    exchange_segment: str
+    instrument_token: str
+
+
+class QuotesRequest(BaseModel):
+    instruments: list[QuoteInstrument]
+    quote_type: str = "ltp"
+
+
+@app.post("/worker/quotes/{session_id}", dependencies=[Depends(verify_api_key)])
+async def get_quotes_data(session_id: str, req: QuotesRequest):
+    """Fetches live quotes for the given instruments."""
+    try:
+        client = await get_current_client(session_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Cannot get client: {e}")
+
+    try:
+        instrument_tokens = [
+            {"exchange_segment": i.exchange_segment, "instrument_token": i.instrument_token}
+            for i in req.instruments
+        ]
+        quotes = client.quotes(instrument_tokens=instrument_tokens, quote_type=req.quote_type)
+        return {"session_id": session_id, "message": "Quotes fetched", "quotes": quotes}
+    except Exception as e:
+        print(f"Exception when calling quotes: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching quotes from Kotak Neo: {e}")
+
+
+@app.get("/worker/order-book/{session_id}", dependencies=[Depends(verify_api_key)])
+async def get_order_book_data(session_id: str):
+    """Fetches the current order book (all orders for the day)."""
+    try:
+        client = await get_current_client(session_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Cannot get client: {e}")
+
+    try:
+        order_book = client.order_report()
+        return {"session_id": session_id, "message": "Order book fetched", "order_book": order_book}
+    except Exception as e:
+        print(f"Exception when calling order_report: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching order book from Kotak Neo: {e}")
+
+
+@app.get("/worker/order-history/{session_id}/{order_id}", dependencies=[Depends(verify_api_key)])
+async def get_order_history_data(session_id: str, order_id: str):
+    """Fetches the status history for a single order id."""
+    try:
+        client = await get_current_client(session_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Cannot get client: {e}")
+
+    try:
+        history = client.order_history(order_id=order_id)
+        return {"session_id": session_id, "message": "Order history fetched", "history": history}
+    except Exception as e:
+        print(f"Exception when calling order_history: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching order history from Kotak Neo: {e}")
+
+
+@app.get("/worker/trade-book/{session_id}", dependencies=[Depends(verify_api_key)])
+async def get_trade_book_data(session_id: str):
+    """Fetches the trade book (completed trades for the day)."""
+    try:
+        client = await get_current_client(session_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Cannot get client: {e}")
+
+    try:
+        trade_book = client.trade_report()
+        return {"session_id": session_id, "message": "Trade book fetched", "trade_book": trade_book}
+    except Exception as e:
+        print(f"Exception when calling trade_report: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching trade book from Kotak Neo: {e}")
+
+
 from pydantic import BaseModel
 
 class BuyOrderRequest(BaseModel):
