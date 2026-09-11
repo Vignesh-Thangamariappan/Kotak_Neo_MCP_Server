@@ -116,10 +116,19 @@ async def login(totp: Optional[str] = None):
             "See .env.example.",
         )
 
-    if not re.fullmatch(r"[0-9]{10}", mobile_number):
-        # Deliberately do not echo the value itself back - only shape info.
-        # Note: uses [0-9] rather than \d, since \d also matches non-ASCII
-        # Unicode digit characters that Kotak's API will still reject.
+    # Kotak's API requires the mobile number WITH the ISD/country code, e.g.
+    # "+919876543210" (see official docs: mobileNumber "with ISD",
+    # example "<+91XXXXXXXXXX>"). Normalize whatever shape the user put in
+    # .env into that exact format, rather than assuming a bare 10-digit
+    # number is correct.
+    digits_only = re.sub(r"[\s-]", "", mobile_number)
+    if re.fullmatch(r"\+[0-9]{11,15}", digits_only):
+        mobile_number = digits_only
+    elif re.fullmatch(r"91[0-9]{10}", digits_only):
+        mobile_number = "+" + digits_only
+    elif re.fullmatch(r"[0-9]{10}", digits_only):
+        mobile_number = "+91" + digits_only
+    else:
         is_ascii = True
         try:
             mobile_number.encode("ascii")
@@ -128,10 +137,11 @@ async def login(totp: Optional[str] = None):
         raise HTTPException(
             status_code=400,
             detail=(
-                "KOTAK_MOBILE_NUMBER must be exactly 10 plain ASCII digits, no "
-                f"+91, spaces, dashes, or quotes. Current value has length "
-                f"{len(mobile_number)} and is_ascii={is_ascii}. Check for stray "
-                "quotes/whitespace/non-ASCII characters in your .env file."
+                "KOTAK_MOBILE_NUMBER could not be normalized to Kotak's expected "
+                "+91XXXXXXXXXX format. Enter it as a plain 10-digit number "
+                "(e.g. 9876543210) or with country code (+919876543210). "
+                f"Current value has length {len(mobile_number)} and is_ascii={is_ascii}. "
+                "Check for stray quotes/whitespace/non-ASCII characters in your .env file."
             ),
         )
 
