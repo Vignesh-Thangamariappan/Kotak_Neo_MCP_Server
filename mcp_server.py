@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -85,11 +86,18 @@ async def login(totp: Optional[str] = None):
     """
     global _session_id
 
-    consumer_key = os.environ.get("KOTAK_CONSUMER_KEY")
-    mobile_number = os.environ.get("KOTAK_MOBILE_NUMBER")
-    ucc = os.environ.get("KOTAK_UCC")
-    mpin = os.environ.get("KOTAK_MPIN")
-    totp_secret = os.environ.get("KOTAK_TOTP_SECRET")
+    def _clean(value: Optional[str]) -> Optional[str]:
+        # Common .env footgun: stray surrounding quotes or whitespace end up
+        # baked into the value literally. Strip them defensively.
+        if value is None:
+            return None
+        return value.strip().strip('"').strip("'")
+
+    consumer_key = _clean(os.environ.get("KOTAK_CONSUMER_KEY"))
+    mobile_number = _clean(os.environ.get("KOTAK_MOBILE_NUMBER"))
+    ucc = _clean(os.environ.get("KOTAK_UCC"))
+    mpin = _clean(os.environ.get("KOTAK_MPIN"))
+    totp_secret = _clean(os.environ.get("KOTAK_TOTP_SECRET"))
 
     missing = [
         name
@@ -106,6 +114,18 @@ async def login(totp: Optional[str] = None):
             status_code=400,
             detail=f"Missing required env vars in your .env file: {', '.join(missing)}. "
             "See .env.example.",
+        )
+
+    if not re.fullmatch(r"\d{10}", mobile_number):
+        # Deliberately do not echo the value itself back - only shape info.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "KOTAK_MOBILE_NUMBER must be exactly 10 digits, no +91, spaces, "
+                f"dashes, or quotes. Current value has length {len(mobile_number)} "
+                f"and {'contains' if not mobile_number.isdigit() else 'does not contain'} "
+                "non-digit characters. Check for stray quotes/whitespace in your .env file."
+            ),
         )
 
     if not totp:
