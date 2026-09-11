@@ -163,6 +163,37 @@ async def get_positions_data(session_id: str):
         raise HTTPException(status_code=500, detail=f"Error fetching positions from Koatk Neo: {e}")
 
 
+@app.get("/worker/search-scrip/{session_id}", dependencies=[Depends(verify_api_key)])
+async def search_scrip_data(
+    session_id: str,
+    exchange_segment: str,
+    symbol: str = "",
+    expiry: str = None,
+    option_type: str = None,
+    strike_price: str = None,
+):
+    """Looks up instrument token(s) for a symbol (e.g. the underlying equity for an option)."""
+    try:
+        client = await get_current_client(session_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Cannot get client: {e}")
+
+    try:
+        result = client.search_scrip(
+            exchange_segment=exchange_segment,
+            symbol=symbol,
+            expiry=expiry,
+            option_type=option_type,
+            strike_price=strike_price,
+        )
+        return {"session_id": session_id, "message": "Scrip search complete", "result": result}
+    except Exception as e:
+        print(f"Exception when calling search_scrip: {e}")
+        raise HTTPException(status_code=500, detail=f"Error searching scrip on Kotak Neo: {e}")
+
+
 class QuoteInstrument(BaseModel):
     exchange_segment: str
     instrument_token: str

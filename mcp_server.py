@@ -250,6 +250,50 @@ async def get_positions():
 
 
 @mcp.tool()
+async def search_scrip(
+    exchange_segment: str,
+    symbol: str = "",
+    expiry: Optional[str] = None,
+    option_type: Optional[str] = None,
+    strike_price: Optional[str] = None,
+):
+    """
+    Looks up instrument token(s) for a symbol, e.g. to find the underlying
+    equity's live instrument token for an option you hold.
+
+    Parameters:
+      - exchange_segment: nse_cm, bse_cm, nse_fo, bse_fo, cde_fo, or mcx_fo
+      - symbol: e.g. "AUBANK" (equity) or the underlying symbol for an option
+      - expiry: "YYYYMM" format, options/futures only
+      - option_type: "CE" or "PE", options only
+      - strike_price: options only
+    """
+    session_id = _require_session()
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{NEO_WORKER_URL}/worker/search-scrip/{session_id}",
+                params={
+                    k: v
+                    for k, v in {
+                        "exchange_segment": exchange_segment,
+                        "symbol": symbol,
+                        "expiry": expiry,
+                        "option_type": option_type,
+                        "strike_price": strike_price,
+                    }.items()
+                    if v is not None
+                },
+                headers=_auth_headers(),
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            await _raise_for_worker_error(e)
+
+
+@mcp.tool()
 async def get_quotes(instruments: list[dict], quote_type: str = "ltp"):
     """
     Gets live quotes for one or more instruments.
