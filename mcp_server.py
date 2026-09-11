@@ -1,10 +1,17 @@
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
+import pyotp
 from mcp.server.fastmcp import FastMCP
 from fastapi import HTTPException
 import httpx
 import json
+
+# Loads a local .env file (gitignored) that you create and edit yourself.
+# The assistant driving this MCP server never reads this file directly —
+# secrets configured here never appear in chat or in tool-call logs.
+load_dotenv()
 
 mcp = FastMCP("Kotak-MCP-Server")
 
@@ -55,14 +62,61 @@ def add(a: int, b: int) -> int:
 
 
 @mcp.tool()
-async def login(totp: str, consumer_key: str, mobile_number: str, ucc: str, mpin: str):
+async def login(totp: Optional[str] = None):
     """
-    Authenticates with Kotak Neo using TOTP + MPIN and stores the resulting
-    session id in memory for this MCP server process. Must be called before
-    any other trading tool. Credentials are sent once to the local worker
-    service and are never logged or persisted by this tool.
+    Authenticates with Kotak Neo and stores the resulting session id in
+    memory for this MCP server process. Must be called before any other
+    trading tool.
+
+    Takes NO secret arguments. All credentials are read from environment
+    variables loaded from a local .env file that you create and edit
+    yourself (see .env.example) — they are never passed through chat or
+    tool-call arguments:
+      - KOTAK_CONSUMER_KEY
+      - KOTAK_MOBILE_NUMBER
+      - KOTAK_UCC
+      - KOTAK_MPIN
+      - KOTAK_TOTP_SECRET (optional: the base32 authenticator-app seed;
+        if set, the current 6-digit TOTP code is generated automatically
+        and the `totp` argument may be omitted)
+
+    If KOTAK_TOTP_SECRET is not set, pass the current 6-digit code from
+    your authenticator app as the `totp` argument instead.
     """
     global _session_id
+
+    consumer_key = os.environ.get("KOTAK_CONSUMER_KEY")
+    mobile_number = os.environ.get("KOTAK_MOBILE_NUMBER")
+    ucc = os.environ.get("KOTAK_UCC")
+    mpin = os.environ.get("KOTAK_MPIN")
+    totp_secret = os.environ.get("KOTAK_TOTP_SECRET")
+
+    missing = [
+        name
+        for name, value in [
+            ("KOTAK_CONSUMER_KEY", consumer_key),
+            ("KOTAK_MOBILE_NUMBER", mobile_number),
+            ("KOTAK_UCC", ucc),
+            ("KOTAK_MPIN", mpin),
+        ]
+        if not value
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required env vars in your .env file: {', '.join(missing)}. "
+            "See .env.example.",
+        )
+
+    if not totp:
+        if not totp_secret:
+            raise HTTPException(
+                status_code=400,
+                detail="No `totp` argument given and KOTAK_TOTP_SECRET is not set in .env. "
+                "Either set KOTAK_TOTP_SECRET, or pass the current 6-digit code as `totp`.",
+            )
+        totp = pyotp.TOTP(totp_secret).now()
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(

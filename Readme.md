@@ -18,7 +18,14 @@
 ## ⚙️ MCP Functions Available
 
 The MCP server exposes the following trading operations:
-1. `login` — authenticate with TOTP + MPIN, must be called first.
+1. `login` — authenticate, must be called first. Takes **no secret arguments**:
+   consumer key, mobile number, UCC, and MPIN are read from a local `.env`
+   file (copy `.env.example` to `.env` and fill it in yourself — this file
+   is gitignored and is never read by the assistant driving the MCP server).
+   If you also set `KOTAK_TOTP_SECRET` in `.env` (the base32 seed from your
+   authenticator app setup), the current TOTP code is generated
+   automatically; otherwise pass the current 6-digit code as the `totp`
+   argument.
 2. `logout` — clear the in-memory session.
 3. Get Holdings.
 4. Get Limits available.
